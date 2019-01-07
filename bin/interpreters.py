@@ -345,7 +345,7 @@ class CheckLinkBlacklistI(Interpreter):
             if re.search(entry, symlink_name):
                 print_warning(f"You are trying to {action} '" + symlink_name +
                               "' which is blacklisted. It is considered " +
-                              "dangerous to {action} those files!")
+                              f"dangerous to {action} those files!")
                 if self.superforce:
                     print_warning(f"Are you sure that you want to {action} " +
                                   "a blacklisted file?")
