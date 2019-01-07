@@ -42,6 +42,7 @@ import configparser
 import csv
 import os
 import sys
+from bin.errors import PreconditionError
 from bin.utils import normpath
 from bin.types import Path
 
@@ -111,7 +112,10 @@ def loadconfig(config_file: Path, installed_filename: str = "default") -> None:
         config_file = os.path.dirname(config_file)
         config_file = os.path.join(config_file, "data/dotmanager.ini")
     config = configparser.ConfigParser()
-    config.read(config_file)
+    try:
+        config.read(config_file)
+    except configparser.Error as err:
+        raise PreconditionError(f"Can't parse config. {err.message}")
 
     # Arguments
     DUISTRATEGY = config.getboolean("Arguments", "duiStrategy",
