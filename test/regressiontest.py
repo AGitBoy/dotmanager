@@ -325,7 +325,7 @@ after_nooptions = {
     }
 }
 DirRegressionTest("NoOptions",
-                  ["-im", "NoOptions"],
+                  ["-i", "NoOptions"],
                   before, after_nooptions, True).success()
 
 
@@ -413,7 +413,7 @@ after_diroptions = {
     }
 }
 DirRegressionTest("DirOption",
-                  ["-im", "DirOption"],
+                  ["-i", "DirOption"],
                   before, after_diroptions, True).success()
 
 
@@ -472,7 +472,7 @@ after_nameoptions = {
     }
 }
 DirRegressionTest("NameOption",
-                  ["-im", "NameOption"],
+                  ["-i", "NameOption"],
                   before, after_nameoptions, True).success()
 
 
