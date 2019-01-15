@@ -37,7 +37,9 @@ as the test modules shall be independent from Dotmanager"""
 
 import hashlib
 import os
+import sys
 from abc import abstractmethod
+from shutil import rmtree
 from subprocess import PIPE
 from subprocess import Popen
 from typing import Dict
@@ -45,6 +47,8 @@ from typing import List
 from typing import Tuple
 from typing import Union
 
+# Types
+###############################################################################
 TestResult = Dict[str, Union[bool, str]]
 CheckResult = Tuple[bool, str]
 FileDescriptor = Dict[str, Union[bool, int, str]]
@@ -92,32 +96,56 @@ DirTree = Dict[str, DirDescriptor]
 # Where the content property is optional for files
 
 
+# Constants and helpers
+###############################################################################
+
+DIRNAME = os.path.dirname(sys.modules[__name__].__file__)
+INSTALLED_FILE = os.path.join(DIRNAME, "../data/installed")
+INSTALLED_FILE = os.path.join(INSTALLED_FILE, "regressiontests.json")
+ENVIRONMENT = os.path.join(DIRNAME, "environment")
+
+
+def cleanup() -> None:
+    """Resets test environment and installed files"""
+    for node in os.listdir(ENVIRONMENT):
+        node = os.path.join(ENVIRONMENT, node)
+        if os.path.isfile(node):
+            os.remove(node)
+        elif os.path.isdir(node):
+            rmtree(node)
+    if os.path.isfile(INSTALLED_FILE):
+        os.remove(INSTALLED_FILE)
+
+
+# Test classes
+###############################################################################
+
 class RegressionTest():
     """This is the abstract base class for all regression tests.
     It provides simple start and check functionality"""
-    def __init__(self, name: str, cmd_args: List[str], cleanup: bool = True):
+    def __init__(self, name: str, cmd_args: List[str], reset: bool):
         self.name = name
-        self.cmd_args = ["../dotmanager.py"] + cmd_args
-        self.cleanup = cleanup
+        self.cmd_args = ["python", os.path.abspath("../dotmanager.py"),
+                         "--config", "test/test.ini",
+                         "--save", "regressiontests"] + cmd_args
+        self.reset = reset
 
     def start(self) -> TestResult:
         """Starts the test and runs all checks"""
-        if self.cleanup:
-            self.clean()
-        pre_result, pre_cause = self.pre_check()
-        if not pre_result:
-            return {"success": False, "phase": "pre", "cause": pre_cause}
-        process = Popen(self.cmd_args + ["--config", "test.ini"], stderr=PIPE)
-        run_cause = process.communicate()
-        if process.returncode != 0:
-            return {"success": False, "phase": "run", "cause": run_cause}
-        post_result, post_cause = self.post_check()
-        if not post_result:
-            return {"success": False, "phase": "post", "cause": post_cause}
+        if self.reset:
+            cleanup()
+        pre = self.pre_check()
+        if not pre[0]:
+            return {"success": False, "phase": "pre", "cause": pre[1]}
+        process = Popen(self.cmd_args)
+        process.communicate()
+        exitcode = process.returncode
+        if exitcode != 0:
+            return {"success": False, "phase": "run", "cause": exitcode}
+        post = self.post_check()
+        if not post[0]:
+            return {"success": False, "phase": "post", "cause": post[1]}
         return {"success": True}
-
-    def clean(self) -> None:
-        pass
 
     @abstractmethod
     def pre_check(self) -> CheckResult:
@@ -139,34 +167,34 @@ class RegressionTest():
             print('\033[92m' + "Ok" + '\033[0m')
         else:
             print('\033[91m\033[1m' + "FAILED" + '\033[0m'
-                  + " in " + result["phase"])
-            print("Cause: " + result["cause"])
+                  + " in " + str(result["phase"]))
+            print("Cause: " + str(result["cause"]))
         return result["success"]
 
-    def fail_with_err(self, fail_result: TestResult) -> bool:
+    def fail(self, phase: str, cause: str) -> bool:
         """Execute this test. Expect a certain error"""
         result = self.start()
         print(self.name + ": ", end="")
         if not result["success"]:
-            if result["cause"] != fail_result["cause"]:
-                print('\033[91m\033[1m' + "FAILED!" + '\033[0m'
-                      + " Expected error: " + fail_result["cause"]
-                      + " but got error: " + result["cause"])
+            if result["cause"] != cause:
+                print('\033[91m\033[1m' + "FAILED" + '\033[0m')
+                print("Expected error: " + str(cause))
+                print("Actual error: " + str(result["cause"]))
             else:
                 print('\033[92m' + "Ok" + '\033[0m')
         else:
-            print('\033[91m\033[1m' + "FAILED!" + '\033[0m'
-                  + " Expected error in " + fail_result["phase"])
-            print("Expected cause: " + result["cause"])
+            print('\033[91m\033[1m' + "FAILED" + '\033[0m')
+            print("Expected error in " + phase)
+            print("Expected error: " + str(cause))
         return not result["success"]
 
 
 class DirRegressionTest(RegressionTest):
     """Regression check if Dotmanager makes the expected
     changes to the filesystem"""
-    def __init__(self, name: str, cmd_args: str, before: DirTree,
-                 after: DirTree, cleanup: bool = True):
-        super().__init__(name, cmd_args, cleanup)
+    def __init__(self, name: str, cmd_args: List[str], before: DirTree,
+                 after: DirTree, reset: bool):
+        super().__init__(name, cmd_args, reset)
         self.before = before
         self.after = after
 
@@ -184,10 +212,10 @@ class DirRegressionTest(RegressionTest):
             users just for the sake of these tests"""
             stat = os.lstat if is_link else os.stat
             if bool(stat(path).st_uid) == props["rootuser"]:
-                user = "user" if props["rootuser"] else "root"
+                user = "root" if props["rootuser"] else "user"
                 raise ValueError((False, f"{path} is a not owned by {user}"))
             if bool(stat(path).st_gid) == props["rootgroup"]:
-                group = "group" if props["rootgroup"] else "root"
+                group = "root" if props["rootgroup"] else "group"
                 raise ValueError((False, f"{path} is a not owned by {group}"))
 
         def check_permission(path: str, permission: int) -> None:
@@ -195,7 +223,7 @@ class DirRegressionTest(RegressionTest):
             if perm_real != str(permission):
                 raise ValueError((False, f"{path} has permission {perm_real}"))
 
-        for dir_name, dir_props in dir_tree:
+        for dir_name, dir_props in dir_tree.items():
             # Directory existance
             if not os.path.isdir(dir_name):
                 raise ValueError((False, dir_name + " is a not a directory"))
@@ -228,10 +256,11 @@ class DirRegressionTest(RegressionTest):
                 # Link owner
                 check_owner(link_path, link_props, True)
                 # Link target
-                target_path = os.path.normpath(os.readlink(link_path))
-                if target_path != os.path.normpath(link_props["target"]):
+                target_path = os.path.abspath(os.readlink(link_path))
+                link_props["target"] = os.path.abspath(link_props["target"])
+                if target_path != link_props["target"]:
                     msg = f"{link_path} should point to {link_props['target']}"
-                    msg += ", but points to {target_path}"
+                    msg += f", but points to {target_path}"
                     raise ValueError((False, msg))
 
     def pre_check(self) -> CheckResult:
@@ -239,11 +268,212 @@ class DirRegressionTest(RegressionTest):
             self.dircheck(self.before)
         except ValueError as err:
             return err.args[0]
-        return (True, "")
+        return True, ""
 
     def post_check(self) -> CheckResult:
         try:
             self.dircheck(self.after)
         except ValueError as err:
             return err.args[0]
-        return (True, "")
+        return True, ""
+
+
+# Tests
+###############################################################################
+
+cleanup()
+before = {
+    "environment": {
+        "files": [],
+        "links": [],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    }
+}
+
+
+after_nooptions = {
+    "environment": {
+        "files": [],
+        "links": [
+            {
+                "name": "name1",
+                "target": "files/name1",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            },
+            {
+                "name": "name2",
+                "target": "files/name2",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            },
+            {
+                "name": "name3",
+                "target": "files/name3",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    }
+}
+DirRegressionTest("NoOptions",
+                  ["-im", "NoOptions"],
+                  before, after_nooptions, True).success()
+
+
+after_diroptions = {
+    "environment": {
+        "files": [],
+        "links": [
+            {
+                "name": "name1",
+                "target": "files/name1",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            },
+            {
+                "name": "name5",
+                "target": "files/name5",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    },
+    "environment/subdir": {
+        "files": [],
+        "links": [
+            {
+                "name": "name2",
+                "target": "files/name2",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    },
+    "environment/subdir/subsubdir": {
+        "files": [],
+        "links": [
+            {
+                "name": "name3",
+                "target": "files/name3",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            },
+            {
+                "name": "name4",
+                "target": "files/name4",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    },
+    "environment/subdir2": {
+        "files": [],
+        "links": [
+            {
+                "name": "name6",
+                "target": "files/name6",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            },
+            {
+                "name": "name7",
+                "target": "files/name7",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    }
+}
+DirRegressionTest("DirOption",
+                  ["-im", "DirOption"],
+                  before, after_diroptions, True).success()
+
+
+after_nameoptions = {
+    "environment": {
+        "files": [
+            {
+                "name": "name",
+                "target": "files/name1",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "links": [],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    },
+    "environment/subdir": {
+        "files": [],
+        "links": [
+            {
+                "name": "name",
+                "target": "files/name2",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            },
+            {
+                "name": "name6",
+                "target": "files/name5",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    },
+    "environment/subdir/subsubdir": {
+        "files": [],
+        "links": [
+            {
+                "name": "name",
+                "target": "files/name3",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    }
+}
+DirRegressionTest("NameOption",
+                  ["-im", "NameOption"],
+                  before, after_nameoptions, True).success()
+
+
+cleanup()
