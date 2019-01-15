@@ -56,23 +56,24 @@ from subprocess import PIPE
 from subprocess import Popen
 from typing import Optional
 from typing import Tuple
-from bin import constants
-from bin.errors import IntegrityError
-from bin.errors import PreconditionError
-from bin.errors import UnkownError
-from bin.errors import UserError
-from bin.errors import UserAbortion
-from bin.errors import FatalError
-from bin.types import InstalledLog
-from bin.types import DiffLogData
-from bin.types import DiffOperation
-from bin.types import Path
-from bin.utils import get_date_time_now
-from bin.utils import get_dir_owner
-from bin.utils import get_gid
-from bin.utils import get_uid
-from bin.utils import is_dynamic_file
-from bin.utils import print_warning
+from dotmanager import constants
+from dotmanager.errors import IntegrityError
+from dotmanager.errors import PreconditionError
+from dotmanager.errors import UnkownError
+from dotmanager.errors import UserError
+from dotmanager.errors import UserAbortion
+from dotmanager.errors import FatalError
+from dotmanager.types import InstalledLog
+from dotmanager.types import DiffLogData
+from dotmanager.types import DiffOperation
+from dotmanager.types import Path
+from dotmanager.utils import get_date_time_now
+from dotmanager.utils import get_dir_owner
+from dotmanager.utils import get_gid
+from dotmanager.utils import get_uid
+from dotmanager.utils import is_dynamic_file
+from dotmanager.utils import print_warning
+from dotmanager.utils import find_files
 
 
 class Interpreter():
@@ -335,8 +336,14 @@ class CheckLinkBlacklistI(Interpreter):
         super().__init__()
         # Load blacklist
         self.superforce = superforce
-        with open("data/black.list", "r") as file:
-            self.blacklist = file.readlines()
+
+        self.blacklist = []
+
+        for bl in find_files("black.list", constants.CONFIG_SEARCH_PATHS):
+            with open(bl, "r") as file:
+                for line in file.readlines():
+                    self.blacklist.append(line)
+
         self.blacklist = [entry.strip() for entry in self.blacklist]
 
     def check_blacklist(self, symlink_name: Path, action: str) -> None:
@@ -643,9 +650,9 @@ class RootNeededI(Interpreter):
                              "for owner rights because it does not exist.")
 
     def _op_update_l(self, dop: DiffOperation) -> None:
+        name = dop["symlink2"]["name"]
         if dop["symlink1"]["uid"] != dop["symlink2"]["uid"] or \
                 dop["symlink1"]["gid"] != dop["symlink2"]["gid"]:
-            name = dop["symlink2"]["name"]
             if dop["symlink2"]["uid"] != get_uid() or \
                     dop["symlink2"]["gid"] != get_gid():
                 self._root_needed("change the owner of", name)
@@ -654,6 +661,9 @@ class RootNeededI(Interpreter):
                 self._root_needed("create links in", os.path.dirname(name))
             if not self._access(dop["symlink1"]["name"]):
                 self._root_needed("remove links from", os.path.dirname(name))
+        if dop["symlink1"]["target"] != dop["symlink2"]["target"]:
+            if not self._access(dop["symlink2"]["name"]):
+                self._root_needed("change target of", name)
 
     def _root_needed(self, operation: str, filename: Path) -> None:
         self.root_needed = True

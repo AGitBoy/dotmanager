@@ -42,15 +42,29 @@ import configparser
 import csv
 import os
 import sys
-from bin.errors import PreconditionError
-from bin.utils import normpath
-from bin.types import Path
+from dotmanger.errors import PreconditionError
+from dotmanager.types import Path
+from dotmanager.utils import find_files
+from dotmanager.utils import get_user_env_var
+from dotmanager.utils import normpath
 
+# Search paths for config files
+CONFIG_SEARCH_PATHS = [
+    os.path.join(
+        os.path.dirname(os.path.dirname(sys.modules[__name__].__file__)),
+        "data"
+    ),
+    "/etc/dotmanager",
+    os.path.join(
+        get_user_env_var('XDG_CONFIG_HOME', normpath('~/.config')),
+        "dotmanager"
+    )
+]
 
 # Version numbers, seperated by underscore. First part is the version of
 # the manager. The second part (after the underscore) is the version of
 # the installed-file schema.
-VERSION = "1.4.2_3"
+VERSION = "1.6.5_3"
 
 
 # Setting defaults/fallback values for all constants
@@ -107,13 +121,16 @@ def loadconfig(config_file: Path, installed_filename: str = "default") -> None:
     global COLOR, INSTALLED_FILE, DEFAULTS, DIR_DEFAULT, FALLBACK
 
     # Init config file
-    if not config_file:
-        config_file = os.path.dirname(sys.modules[__name__].__file__)
-        config_file = os.path.dirname(config_file)
-        config_file = os.path.join(config_file, "data/dotmanager.ini")
+    cfg_files = find_files("dotmanager.ini", CONFIG_SEARCH_PATHS)
+
+    if config_file:
+        cfg_files.append(config_file)
+
     config = configparser.ConfigParser()
+
     try:
-        config.read(config_file)
+        for cfg in cfg_files:
+            config.read(cfg)
     except configparser.Error as err:
         raise PreconditionError(f"Can't parse config. {err.message}")
 

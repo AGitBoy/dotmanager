@@ -48,26 +48,26 @@ from typing import List
 from typing import NoReturn
 from typing import Tuple
 from typing import Union
-from bin import constants
-from bin.dynamicfile import *
-from bin.errors import CustomError
-from bin.errors import GenerationError
-from bin.types import Options
-from bin.types import Path
-from bin.types import Pattern
-from bin.types import ProfileResult
-from bin.types import RelPath
-from bin.utils import expandvars
-from bin.utils import expanduser
-from bin.utils import find_target
-from bin.utils import get_dir_owner
-from bin.utils import import_profile_class
-from bin.utils import normpath
-from bin.utils import print_warning
-from bin.utils import walk_dotfiles
+from dotmanager import constants
+from dotmanager.dynamicfile import *
+from dotmanager.errors import CustomError
+from dotmanager.errors import GenerationError
+from dotmanager.types import Options
+from dotmanager.types import Path
+from dotmanager.types import Pattern
+from dotmanager.types import ProfileResult
+from dotmanager.types import RelPath
+from dotmanager.utils import expandvars
+from dotmanager.utils import expanduser
+from dotmanager.utils import find_target
+from dotmanager.utils import get_dir_owner
+from dotmanager.utils import import_profile_class
+from dotmanager.utils import normpath
+from dotmanager.utils import print_warning
+from dotmanager.utils import walk_dotfiles
 
 # The custom builtins that the profiles will implement
-CUSTOM_BUILTINS = ["links", "link", "cd", "opt", "extlink", "has_tag",
+CUSTOM_BUILTINS = ["links", "link", "cd", "opt", "extlink", "has_tag", "merge",
                    "default", "subprof", "tags", "rmtags", "decrypt"]
 
 
@@ -146,15 +146,37 @@ class Profile:
         raise GenerationError(self.name, msg)
 
     def decrypt(self, target: Union[str, DynamicFile]) -> EncryptedFile:
-        """Creates an EncryptedFile instance, loads and returns it"""
+        """Creates an EncryptedFile instance, updates and returns it"""
         if isinstance(target, DynamicFile):
             encrypt = EncryptedFile(target.name)
             encrypt.sources = [target.getpath()]
             encrypt.update()
         else:
             encrypt = EncryptedFile(target)
-            encrypt.update(self.options["tags"])
+            try:
+                encrypt.add_source(find_target(target, self.options["tags"]))
+            except ValueError as err:
+                self.__raise_generation_error(err)
+            encrypt.update()
         return encrypt
+
+    def merge(self, name: str,
+              targets: List[Union[DynamicFile, str]]) -> SplittedFile:
+        """Creates a SplittedFile instance, updates and returns it"""
+        if len(targets) < 2:
+            msg = f"merge() for '{name}' needs at least two dotfiles to merge"
+            self.__raise_generation_error(msg)
+        split = SplittedFile(name)
+        for target in targets:
+            if isinstance(target, DynamicFile):
+                split.sources.append(target.getpath())
+            else:
+                try:
+                    split.add_source(find_target(target, self.options["tags"]))
+                except ValueError as err:
+                    self.__raise_generation_error(err)
+        split.update()
+        return split
 
     def link(self, *targets: List[Union[DynamicFile, str]],
              **kwargs: Options) -> None:
@@ -168,9 +190,9 @@ class Profile:
             else:
                 try:
                     found_target = find_target(target, read_opt("tags"))
-                    found_target = normpath(found_target)
                 except ValueError as err:
                     self.__raise_generation_error(err)
+                found_target = normpath(found_target)
             if found_target:
                 self.__create_link_descriptor(found_target, **kwargs)
             elif not read_opt("optional"):
@@ -188,7 +210,8 @@ class Profile:
         if not read_opt("optional") or os.path.exists(path):
             self.__create_link_descriptor(os.path.abspath(path), **kwargs)
 
-    def links(self, target_pattern: Pattern, **kwargs: Options) -> None:
+    def links(self, target_pattern: Pattern,
+              encrypted: bool = False, **kwargs: Options) -> None:
         """Calls link() for all targets matching a pattern. Also allows you
         to ommit the 'replace_pattern' and use the target_pattern instead"""
         read_opt = self.__make_read_opt(kwargs)
@@ -241,6 +264,10 @@ class Profile:
             self.__raise_generation_error(msg)
         else:
             for target in target_list:
+                if encrypted:
+                    file_name = os.path.basename(target)
+                    target = self.decrypt(file_name).getpath()
+                    kwargs["name"] = file_name
                 self.__create_link_descriptor(target, **kwargs)
 
 
