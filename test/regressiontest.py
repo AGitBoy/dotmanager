@@ -125,7 +125,7 @@ class RegressionTest():
     It provides simple start and check functionality"""
     def __init__(self, name: str, cmd_args: List[str], reset: bool):
         self.name = name
-        self.cmd_args = ["python", os.path.abspath("../dotmanager.py"),
+        self.cmd_args = ["python", os.path.abspath("../dotmgr.py"),
                          "--config", "test/test.ini",
                          "--save", "regressiontests"] + cmd_args
         self.reset = reset

@@ -42,7 +42,7 @@ import configparser
 import csv
 import os
 import sys
-from dotmanger.errors import PreconditionError
+from dotmanager.errors import PreconditionError
 from dotmanager.types import Path
 from dotmanager.utils import find_files
 from dotmanager.utils import get_user_env_var

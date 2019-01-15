@@ -1,5 +1,5 @@
 """This module collects all profiles that are used to test the options"""
-from bin.profile import Profile
+from dotmanager.profile import Profile
 
 class NoOptions(Profile):
     def generate(self):
