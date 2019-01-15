@@ -127,7 +127,8 @@ class RegressionTest():
         self.name = name
         self.cmd_args = ["python", os.path.abspath("../dotmgr.py"),
                          "--config", "test/test.ini",
-                         "--save", "regressiontests"] + cmd_args
+                         "--save", "regressiontests",
+                         "--silent"] + cmd_args
         self.reset = reset
 
     def start(self) -> TestResult:
