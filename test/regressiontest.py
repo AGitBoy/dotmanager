@@ -170,6 +170,7 @@ class RegressionTest():
             print('\033[91m\033[1m' + "FAILED" + '\033[0m'
                   + " in " + str(result["phase"]))
             print("Cause: " + str(result["cause"]))
+        print(100*"-")
         return result["success"]
 
     def fail(self, phase: str, cause: str) -> bool:
@@ -187,6 +188,7 @@ class RegressionTest():
             print('\033[91m\033[1m' + "FAILED" + '\033[0m')
             print("Expected error in " + phase)
             print("Expected error: " + str(cause))
+        print(100*"-")
         return not result["success"]
 
 
@@ -236,7 +238,7 @@ class DirRegressionTest(RegressionTest):
             for file_props in dir_props["files"]:
                 file_path = os.path.join(dir_name, file_props["name"])
                 # File existance
-                if not os.path.isfile(file_path):
+                if os.path.islink(file_path) or not os.path.isfile(file_path):
                     raise ValueError((False, f"{file_path} is a not a file"))
                 # File permission
                 check_permission(file_path, file_props["permission"])
@@ -279,10 +281,9 @@ class DirRegressionTest(RegressionTest):
         return True, ""
 
 
-# Tests
+# Test data
 ###############################################################################
 
-cleanup()
 before = {
     "environment": {
         "files": [],
@@ -292,7 +293,6 @@ before = {
         "rootgroup": False
     }
 }
-
 
 after_nooptions = {
     "environment": {
@@ -325,10 +325,6 @@ after_nooptions = {
         "rootgroup": False
     }
 }
-DirRegressionTest("NoOptions",
-                  ["-i", "NoOptions"],
-                  before, after_nooptions, True).success()
-
 
 after_diroptions = {
     "environment": {
@@ -413,14 +409,11 @@ after_diroptions = {
         "rootgroup": False
     }
 }
-DirRegressionTest("DirOption",
-                  ["-i", "DirOption"],
-                  before, after_diroptions, True).success()
-
 
 after_nameoptions = {
     "environment": {
-        "files": [
+        "files": [],
+        "links": [
             {
                 "name": "name",
                 "target": "files/name1",
@@ -429,7 +422,6 @@ after_nameoptions = {
                 "rootgroup": False
             }
         ],
-        "links": [],
         "permission": 755,
         "rootuser": False,
         "rootgroup": False
@@ -472,9 +464,107 @@ after_nameoptions = {
         "rootgroup": False
     }
 }
+
+after_prefixsuffixoptions = {
+    "environment": {
+        "files": [],
+        "links": [
+            {
+                "name": ".name1",
+                "target": "files/name1",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            },
+            {
+                "name": "name2bla",
+                "target": "files/name2",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            },
+            {
+                "name": "name5",
+                "target": "files/name5",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    },
+    "environment/subdir": {
+        "files": [],
+        "links": [
+            {
+                "name": "name3",
+                "target": "files/name3",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    },
+    "environment/name4": {
+        "files": [],
+        "links": [
+            {
+                "name": "test",
+                "target": "files/name4",
+                "permission": 644,
+                "rootuser": False,
+                "rootgroup": False
+            }
+        ],
+        "permission": 755,
+        "rootuser": False,
+        "rootgroup": False
+    }
+}
+
+
+# Test execution
+###############################################################################
+
+# If you execute this the first time, you need to create "environment/"
+cleanup()
+print(100*"-")
+
+DirRegressionTest("NoOptions",
+                  ["-i", "NoOptions"],
+                  before, after_nooptions, True).success()
 DirRegressionTest("NameOption",
                   ["-i", "NameOption"],
                   before, after_nameoptions, True).success()
-
+DirRegressionTest("DirOption",
+                  ["-i", "DirOption"],
+                  before, after_diroptions, True).success()
+DirRegressionTest("PrefixSuffixOption",
+                  ["-i", "PrefixSuffixOption"],
+                  before, after_prefixsuffixoptions, True).success()
 
 cleanup()
+
+
+
+###############################################################################
+# TODO: Tests for:
+## option owner
+## option replace and replace_pattern
+## option optional
+## option permission
+## extlink()
+## env var substitution
+## tags()
+## decrypt()
+## subprof()
+## merge()
+## various conflicts
+## blacklist
+## .dotignore
+## links()

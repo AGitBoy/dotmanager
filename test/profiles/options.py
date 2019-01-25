@@ -22,3 +22,11 @@ class NameOption(Profile):
         link("name3", directory="subdir", name="subsubdir/name")
         cd("subdir")
         link("name5", name="../name6", directory="subsubdir")
+
+class PrefixSuffixOption(Profile):
+    def generate(self):
+        link("name1", prefix=".")
+        link("name2", suffix="bla")
+        link("name3", prefix="subdir/")
+        link("name4", suffix="/test")
+        link("name5")
